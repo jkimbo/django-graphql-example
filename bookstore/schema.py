@@ -36,8 +36,8 @@ class AuthorType(graphene.ObjectType):
     name = graphene.String()
     books = graphene.List(lambda: BookType)
 
-    def resolve_books(root: models.Author, info):
-        return info.context.books_by_author_loader.load(root.id).get()
+    def resolve_books(root: models.Author, info, **kwargs):
+        return info.context.books_by_author_loader.load(root.id)
 
 
 class Query(graphene.ObjectType):
