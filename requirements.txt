@@ -1,4 +1,6 @@
+aiodataloader==0.2.0
 django==3.0.5
 graphql-core==3.1.0
 git+https://github.com/graphql-python/graphene.git@871c60cf461eb313ee9c1550cd7954ee4134b566
 git+git://github.com/ulgens/graphene-django.git@02201ec65f9644a7cc2d8706cbb00f7fd56c2faa
+promise==2.3

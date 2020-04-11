@@ -15,10 +15,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from graphene_django.views import GraphQLView
 from bookstore import schema
+from bookstore.schema import BookstoreGraphQLView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('graphql/', GraphQLView.as_view(graphiql=True, schema=schema.schema)),
+    path('graphql/', BookstoreGraphQLView.as_view(graphiql=True, schema=schema.schema)),
 ]
