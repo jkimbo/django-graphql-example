@@ -1,25 +1,19 @@
 import asyncio
+from asgiref.sync import async_to_sync
 
 import graphene
 from django.utils.functional import cached_property
 from graphene_django.views import GraphQLView
-from promise import Promise
-from promise.dataloader import DataLoader
-from promise import set_default_scheduler
-from promise.schedulers.thread import ThreadScheduler
+from aiodataloader import DataLoader
+from graphql import parse, validate
+from graphql.execution import ExecutionResult
 
 from bookstore import models
 
-set_default_scheduler(ThreadScheduler())
-
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
 
 class BooksByAuthorLoader(DataLoader):
-    def batch_load_fn(self, author_ids):
-        print(author_ids)
-        return Promise.resolve([models.Book.objects.filter(authors__id=id).all() for id in author_ids])
+    async def batch_load_fn(self, author_ids):
+        return [models.Book.objects.filter(authors__id=id).all() for id in author_ids]
 
 
 class BookType(graphene.ObjectType):
@@ -36,8 +30,8 @@ class AuthorType(graphene.ObjectType):
     name = graphene.String()
     books = graphene.List(lambda: BookType)
 
-    def resolve_books(root: models.Author, info):
-        return info.context.books_by_author_loader.load(root.id).get()
+    async def resolve_books(root: models.Author, info):
+        return await info.context.books_by_author_loader.load(root.id)
 
 
 class Query(graphene.ObjectType):
@@ -73,6 +67,47 @@ class GQLContext:
 
 class BookstoreGraphQLView(GraphQLView):
     def get_context(self, request):
-        view_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(view_loop)
         return GQLContext(request)
+
+    def execute_graphql_request(
+        self, request, data, query, variables, operation_name, show_graphiql=False
+    ):
+        if not query:
+            if show_graphiql:
+                return None
+            raise HttpError(HttpResponseBadRequest("Must provide query string."))
+
+        try:
+            document = parse(query)
+        except Exception as e:
+            return ExecutionResult(errors=[e])
+
+        if request.method.lower() == "get":
+            operation_ast = get_operation_ast(document, operation_name)
+            if operation_ast and operation_ast.operation != OperationType.QUERY:
+                if show_graphiql:
+                    return None
+
+                raise HttpError(
+                    HttpResponseNotAllowed(
+                        ["POST"],
+                        "Can only perform a {} operation from a POST request.".format(
+                            operation_ast.operation.value
+                        ),
+                    )
+                )
+
+        validation_errors = validate(self.schema.graphql_schema, document)
+        if validation_errors:
+            return ExecutionResult(data=None, errors=validation_errors)
+
+        execute = async_to_sync(self.schema.execute_async)
+        response = execute(
+            source=query,
+            root_value=self.get_root_value(request),
+            variable_values=variables,
+            operation_name=operation_name,
+            context_value=self.get_context(request),
+            middleware=self.get_middleware(request),
+        )
+        return response
